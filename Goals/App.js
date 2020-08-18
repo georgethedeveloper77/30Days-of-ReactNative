@@ -1,134 +1,140 @@
-import React, {useState} from 'react';
-import {View, StyleSheet, FlatList, Alert} from 'react-native';
-import {uuid} from 'uuidv4';
+import React from "react";
+import { StyleSheet, Text, View, TouchableOpacity, FlatList, Modal, ActivityIndicator } from "react-native";
+import { AntDesign } from "@expo/vector-icons";
+import colors from "./Colors";
+import TodoList from "./components/TodoList";
+import AddListModal from "./components/AddListModal";
+import Fire from "./Fire";
 
-import Header from './components/Header';
-import ListItem from './components/ListItem';
-import AddItem from './components/AddItem';
+export default class App extends React.Component {
+    state = {
+        addTodoVisible: false,
+        lists: [],
+        user: {},
+        loading: true
+    };
 
-const App = () => {
-  const [items, setItems] = useState([
-    {
-      id: uuid(),
-      text: 'Milk',
-    },
-    {
-      id: uuid(),
-      text: 'Eggs',
-    },
-    {
-      id: uuid(),
-      text: 'Bread',
-    },
-    {
-      id: uuid(),
-      text: 'Juice',
-    },
-  ]);
+    componentDidMount() {
+        firebase = new Fire((error, user) => {
+            if (error) {
+                return alert("Uh oh, something went wrong");
+            }
 
-  // Flag true if user is currently editing an item
-  const [editStatus, editStatusChange] = useState(false);
+            firebase.getLists(lists => {
+                this.setState({ lists, user }, () => {
+                    this.setState({ loading: false });
+                });
+            });
 
-  // State to capture information about the item being edited
-  const [editItemDetail, editItemDetailChange] = useState({
-    id: null,
-    text: null,
-  });
-
-  const [checkedItems, checkedItemChange] = useState([]);
-
-  const deleteItem = id => {
-    setItems(prevItems => {
-      return prevItems.filter(item => item.id !== id);
-    });
-  };
-
-  // Submit the users edits to the overall items state
-  const saveEditItem = (id, text) => {
-    setItems(prevItems => {
-      return prevItems.map(item =>
-        item.id === editItemDetail.id ? {id, text: editItemDetail.text} : item,
-      );
-    });
-    // Flip edit status back to false
-    editStatusChange(!editStatus);
-  };
-
-  // Event handler to capture users text input as they edit an item
-  const handleEditChange = text => {
-    editItemDetailChange({id: editItemDetail.id, text});
-  };
-
-  const addItem = text => {
-    if (!text) {
-      Alert.alert(
-        'No item entered',
-        'Please enter an item when adding to your shopping list',
-        [
-          {
-            text: 'Understood',
-            style: 'cancel',
-          },
-        ],
-        {cancelable: true},
-      );
-    } else {
-      setItems(prevItems => {
-        return [{id: uuid(), text}, ...prevItems];
-      });
-    }
-  };
-
-  // capture old items ID and text when user clicks edit
-  const editItem = (id, text) => {
-    editItemDetailChange({
-      id,
-      text,
-    });
-    return editStatusChange(!editStatus);
-  };
-
-  const itemChecked = (id, text) => {
-    const isChecked = checkedItems.filter(checkedItem => checkedItem.id === id);
-    isChecked.length
-      ? // remove item from checked items state (uncheck)
-        checkedItemChange(prevItems => {
-          return [...prevItems.filter(item => item.id !== id)];
-        })
-      : // Add item to checked items state
-        checkedItemChange(prevItems => {
-          return [...prevItems.filter(item => item.id !== id), {id, text}];
+            this.setState({ user });
         });
-  };
+    }
 
-  return (
-    <View style={styles.container}>
-      <Header title="Shopping List" />
-      <AddItem addItem={addItem} />
-      <FlatList
-        data={items}
-        renderItem={({item}) => (
-          <ListItem
-            item={item}
-            deleteItem={deleteItem}
-            editItem={editItem}
-            isEditing={editStatus}
-            editItemDetail={editItemDetail}
-            saveEditItem={saveEditItem}
-            handleEditChange={handleEditChange}
-            itemChecked={itemChecked}
-            checkedItems={checkedItems}
-          />
-        )}
-      />
-    </View>
-  );
-};
+    componentWillUnmount() {
+        firebase.detach();
+    }
+
+    toggleAddTodoModal() {
+        this.setState({ addTodoVisible: !this.state.addTodoVisible });
+    }
+
+    renderList = list => {
+        return <TodoList list={list} updateList={this.updateList} />;
+    };
+
+    addList = list => {
+        firebase.addList({
+            name: list.name,
+            color: list.color,
+            todos: []
+        });
+    };
+
+    updateList = list => {
+        firebase.updateList(list);
+    };
+
+    render() {
+        if (this.state.loading) {
+            return (
+                <View style={styles.container}>
+                    <ActivityIndicator size="large" color={colors.blue} />
+                </View>
+            );
+        }
+
+        return (
+            <View style={styles.container}>
+                <Modal
+                    animationType="slide"
+                    visible={this.state.addTodoVisible}
+                    onRequestClose={() => this.toggleAddTodoModal()}
+                >
+                    <AddListModal closeModal={() => this.toggleAddTodoModal()} addList={this.addList} />
+                </Modal>
+
+                <View style={{ flexDirection: "row" }}>
+                    <View style={styles.divider} />
+                    <Text style={styles.title}>
+                        Todo <Text style={{ fontWeight: "300", color: colors.blue }}>Lists</Text>
+                    </Text>
+                    <View style={styles.divider} />
+                </View>
+
+                <View style={{ marginVertical: 48 }}>
+                    <TouchableOpacity style={styles.addList} onPress={() => this.toggleAddTodoModal()}>
+                        <AntDesign name="plus" size={16} color={colors.blue} />
+                    </TouchableOpacity>
+
+                    <Text style={styles.add}>Add List</Text>
+                </View>
+
+                <View style={{ height: 275, paddingLeft: 32 }}>
+                    <FlatList
+                        data={this.state.lists}
+                        keyExtractor={item => item.id.toString()}
+                        horizontal={true}
+                        showsHorizontalScrollIndicator={false}
+                        renderItem={({ item }) => this.renderList(item)}
+                        keyboardShouldPersistTaps="always"
+                    />
+                </View>
+            </View>
+        );
+    }
+}
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+    container: {
+        flex: 1,
+        backgroundColor: "#fff",
+        alignItems: "center",
+        justifyContent: "center"
+    },
+    divider: {
+        backgroundColor: colors.lightBlue,
+        height: 1,
+        flex: 1,
+        alignSelf: "center"
+    },
+    title: {
+        fontSize: 38,
+        fontWeight: "800",
+        color: colors.black,
+        paddingHorizontal: 64
+    },
+    addList: {
+        borderWidth: 2,
+        borderColor: colors.lightBlue,
+        borderRadius: 4,
+        padding: 16,
+        alignItems: "center",
+        justifyContent: "center"
+    },
+    add: {
+        color: colors.blue,
+        fontWeight: "600",
+        fontSize: 14,
+        marginTop: 8
+    }
 });
-
-export default App;
